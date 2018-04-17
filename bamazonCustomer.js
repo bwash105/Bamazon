@@ -1,5 +1,6 @@
 var mysql = require("mysql");
 var inquirer = require("inquirer");
+var cTable = require("console.table");
 
 var connection = mysql.createConnection({
   host: "localhost",
@@ -16,14 +17,13 @@ var connection = mysql.createConnection({
 connection.connect(function(err) {
     if (err) throw err;
     console.log("connected as id " + connection.threadId + "\n");
-    afterConnection();
+    listProducts();
 });
 
-function afterConnection() {
+function listProducts() {
   connection.query("SELECT * FROM products", function(err, res) {
     if (err) throw err;
-    // console.log(res);
-    // connection.end();
+    console.table(res);
     runSearch();
   });
 }
@@ -31,25 +31,46 @@ function afterConnection() {
 
 // The first should ask them the ID of the product they would like to buy.
 function runSearch() {
+  console.log("Welcome to Bamazon, anything is possible!")
     inquirer
-      .prompt({
-        name: "action",
-        type: "rawlist",
-        message: "What item would you like to buy?",
-        choices: [
-          "SELECT * FROM products"
-        ]
-      })
+      .prompt([{
+        name: "itemId",
+        type: "input",
+        message: "Select an item by the item_id for purchase:",
+        }, {
+          type: "input",
+          message: "Select how many items for purchase?",
+          name: "quantityItem"
+        }])
       .then(function(answer) {
-        switch (answer.action) {
-        case "Find songs by artist":
-          artistSearch();
-          break;
-  
-        case "Find all artists who appear more than once":
-          multiSearch();
-          break;
-        }
+        connection.query("SELECT stock_quantity FROM products WHERE item_id = ?", [answer.itemId], function(err, res) {
+          if (err) throw err;
+          var stock = parseInt(res[0].stock);
+            if (inquirer.quantityItem > stock) {
+              console.log("Sorry, out of stock");
+            printProducts();
+            }
+            else {
+              stock = stock - parseInt(answer.quantityItem);
+              connection.query("UPDATE products SET ? WHERE ?", [{"stock_quantity": stock}, {"item_id": answer.itemId}], function(err, res){
+                if (err) throw err;
+                console.log("Thank you, your " + answer.stock + res[0].product_name + " will be shipped in 1-2 business days.")
+                inquirer.prompt({
+                  type: "list",
+                  message: "Continue shopping?",
+                  choices: ["y","n"],
+                  name: "userChoice" 
+                }).then(function(answer) {
+                  if (answer.userChoice === "y") {
+                    printProducts();
+                  } else {
+                    console.log("You did it! We knew you could do it, join our newsletter.");
+                    connection.end();
+                  }
+                })
+              })
+            }
+        })
       });
   }
 
